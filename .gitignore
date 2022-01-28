@@ -11,3 +11,5 @@ listfs
 # Vim
 *.swp
 *~
+debian9-ext2.kern.log
+debian9-ext2.img
