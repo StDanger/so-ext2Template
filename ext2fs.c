@@ -487,13 +487,15 @@ int ext2_lookup(uint32_t ino, const char *name, uint32_t *ino_p,
     if (ext2_readdir(ino, &offset, &entry) == 0)
       return ENOENT;
 
-    if (!strcmp(name, entry.de_name)) {
-      if (ino_p != NULL)
-        *ino_p = entry.de_ino;
-      if (type_p != NULL)
-        *type_p = entry.de_type;
-      return 0;
-    }
+    if (strcmp(name, entry.de_name))
+      continue;
+
+    if (type_p != NULL)
+      *type_p = entry.de_type;
+    if (ino_p != NULL)
+      *ino_p = entry.de_ino;
+
+    return 0;
   }
 #endif /* !STUDENT */
 
