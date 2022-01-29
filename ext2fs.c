@@ -342,31 +342,26 @@ long ext2_blkaddr_read(uint32_t ino, uint32_t blkidx) {
  * WARNING: This function assumes that `ino` i-node pointer is valid! */
 int ext2_read(uint32_t ino, void *data, size_t pos, size_t len) {
 #ifdef STUDENT
-  if (ino != 0) {
-    ext2_inode_t inode;
-    ext2_inode_read(ino, &inode);
-    if (ino != 0 && pos + len > inode.i_size)
-      return EINVAL;
-  }
-  void *src = NULL;
-  blk_t *block = NULL;
-  uint32_t read_bytes;
-  while (len > 0) {
-    uint32_t idx_curr_block = pos / BLKSIZE;
-    uint32_t pos_in_curr_block = pos % BLKSIZE;
-    block = blk_get(ino, idx_curr_block);
 
-    read_bytes = min(BLKSIZE - pos_in_curr_block, len);
+  ext2_inode_t inode;
+  ext2_inode_read(ino, &inode);
+  if (pos + len > inode.i_size)
+    return EINVAL;
+
+  while (len > 0) {
+    uint32_t posRelative = pos % BLKSIZE;
+    blk_t *block = blk_get(ino, pos / BLKSIZE);
+
+    uint32_t read_bytes = min(BLKSIZE - posRelative, len);
     if (block != BLK_ZERO) {
-      src = (block->b_data) + pos_in_curr_block;
-      memcpy(data, src, read_bytes);
+      memcpy(data, (block->b_data) + posRelative, read_bytes);
       blk_put(block);
     } else
       memset(data, 0, read_bytes);
 
+    pos += read_bytes;
     len -= read_bytes;
     data += read_bytes;
-    pos += read_bytes;
   }
 #endif /* !STUDENT */
   return EINVAL;
@@ -381,24 +376,23 @@ int ext2_read(uint32_t ino, void *data, size_t pos, size_t len) {
 
 int ext2_readdir(uint32_t ino, uint32_t *off_p, ext2_dirent_t *de) {
 #ifdef STUDENT
-  /* TODO */
   ext2_inode_t inode;
   ext2_inode_read(ino, &inode);
-  uint32_t inode_found = 0;
-  while (!inode_found) {
+  while (true) {
     if (inode.i_size <= *off_p)
       return 0;
 
     ext2_read(ino, de, *off_p, de_name_offset);
-    inode_found = de->de_ino;
-    ext2_read(ino, de->de_name, *off_p + de_name_offset, de->de_namelen);
+    ext2_read(ino, de->de_name, *off_p + de_name_offset,
+              de->de_namelen); // reading the name
+
+    *off_p += de->de_reclen;
     de->de_name[de->de_namelen] = '\0';
-    *off_p = *off_p + de->de_reclen;
+
+    if (de->de_ino)
+      return 1;
   }
-  return 1;
-  (void)ino;
-  (void)off_p;
-  (void)de;
+
 #endif /* !STUDENT */
   return 0;
 }
@@ -416,25 +410,22 @@ int ext2_readlink(uint32_t ino, char *buf, size_t buflen) {
     /* Check if it's a symlink and read it. */
 #ifdef STUDENT
   /* TODO */
-  (void)buf;
-  (void)buflen;
-  if ((EXT2_IFLNK & inode.i_mode) == 0)
+
+  if ((EXT2_IFLNK & inode.i_mode) && buflen >= inode.i_size) {
+    if (inode.i_size < EXT2_MAXSYMLINKLEN) {
+      memcpy(buf, inode.i_blocks, inode.i_size);
+      buf[inode.i_size] = '\0';
+      return 0;
+    } else {
+      int read_bytes = ext2_read(ino, buf, 0, inode.i_size);
+      if (read_bytes < 0)
+        return EINVAL;
+      buf[read_bytes] = '\0';
+      return 0;
+    }
+  } else
     return EINVAL;
 
-  if (inode.i_size > buflen)
-    return EINVAL;
-
-  if (inode.i_size < EXT2_MAXSYMLINKLEN) {
-    memcpy(buf, inode.i_blocks, inode.i_size);
-    buf[inode.i_size] = '\0';
-    return 0;
-  } else {
-    int read_bytes = ext2_read(ino, buf, 0, inode.i_size);
-    if (read_bytes < 0)
-      return EINVAL;
-    buf[read_bytes] = '\0';
-    return 0;
-  }
 #endif /* !STUDENT */
   return ENOTSUP;
 }
@@ -450,19 +441,21 @@ int ext2_stat(uint32_t ino, struct stat *st) {
 
     /* Convert the metadata! */
 #ifdef STUDENT
-  /* TODO */
-  (void)st;
+  st->st_atime = inode.i_atime;
+  st->st_ctime = inode.i_ctime;
+  st->st_gid = inode.i_gid;
+
   st->st_ino = ino;
   st->st_mode = inode.i_mode;
+  st->st_mtime = inode.i_mtime;
+
   st->st_nlink = inode.i_nlink;
-  st->st_uid = inode.i_uid;
-  st->st_gid = inode.i_gid;
   st->st_size = inode.i_size;
+  st->st_uid = inode.i_uid;
+
   st->st_blksize = BLKSIZE;
   st->st_blocks = inode.i_nblock;
-  st->st_atime = inode.i_atime;
-  st->st_mtime = inode.i_mtime;
-  st->st_ctime = inode.i_ctime;
+
 #endif /* !STUDENT */
   return ENOTSUP;
 }
@@ -484,9 +477,7 @@ int ext2_lookup(uint32_t ino, const char *name, uint32_t *ino_p,
     return error;
 
 #ifdef STUDENT
-  /* TODO */
-  (void)ino_p;
-  (void)type_p;
+
   if ((EXT2_IFDIR & inode.i_mode) == 0)
     return ENOTDIR;
 
