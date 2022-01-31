@@ -1,3 +1,11 @@
+/*
+ * Oświadczam, że zapoznałem(-am) się z regulaminem prowadzenia zajęć
+ * i jestem świadomy(-a) konsekwencji niestosowania się do podanych tam zasad.
+ */
+#ifdef STUDENT
+/* Imię i nazwisko, numer indeksu: Dominik Trautman, 308374 */
+#endif
+
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -118,6 +126,7 @@ static blk_t *blk_alloc(void) {
   /* Initially every empty block is on free list. */
   if (!TAILQ_EMPTY(&freelst)) {
 #ifdef STUDENT
+    // removing first block from the list
     blk = TAILQ_FIRST(&freelst);
     TAILQ_REMOVE(&freelst, blk, b_link);
 #endif /* !STUDENT */
@@ -155,9 +164,11 @@ static blk_t *blk_get(uint32_t ino, uint32_t idx) {
   TAILQ_FOREACH (blk, bucket, b_hash) {
     if (blk->b_inode == ino && blk->b_index == idx) {
       if (blk->b_refcnt == 0) {
-        TAILQ_REMOVE(&lrulst, blk, b_link);
+        TAILQ_REMOVE(
+          &lrulst, blk,
+          b_link); // once found removing it from the list of unused blocks
       }
-      blk->b_refcnt++;
+      blk->b_refcnt++; // increasing reference count
       return blk;
     }
   }
@@ -208,7 +219,6 @@ int ext2_block_used(uint32_t blkaddr) {
     return EINVAL;
   int used = 0;
 #ifdef STUDENT
-
   blk_t *bitmap =
     blk_get(0, group_desc[(blkaddr - 1) / blocks_per_group].gd_b_bitmap);
 
@@ -219,10 +229,9 @@ int ext2_block_used(uint32_t blkaddr) {
 
   used &= (1 << (bIndex % 8)); // getting the correct bit
 
-  blk_put(bitmap); // decreasing reference count after get
+  blk_put(bitmap); // we're not using this block anymore so putting it back
   if (used > 0)
     used = 1;
-
 #endif /* !STUDENT */
   return used;
 }
@@ -234,7 +243,6 @@ int ext2_inode_used(uint32_t ino) {
     return EINVAL;
   int used = 0;
 #ifdef STUDENT
-
   // same as ext2_block_used but with inode bitmap
   blk_t *bitmap =
     blk_get(0, group_desc[(ino - 1) / inodes_per_group].gd_i_bitmap);
@@ -246,7 +254,7 @@ int ext2_inode_used(uint32_t ino) {
 
   used &= (1 << (iIndex % 8)); // getting the correct bit
 
-  blk_put(bitmap); // decreasing reference count after get
+  blk_put(bitmap);
   if (used > 0)
     used = 1;
 #endif /* !STUDENT */
@@ -266,7 +274,7 @@ static int ext2_inode_read(off_t ino, ext2_inode_t *inode) {
   ext2_read(0, inode,
             BLKSIZE * groupDesc.gd_i_tables + iIndex * sizeof(ext2_inode_t),
             sizeof(ext2_inode_t));
-
+  return ENOENT;
 #endif /* !STUDENT */
   return 0;
 }
@@ -274,7 +282,7 @@ static int ext2_inode_read(off_t ino, ext2_inode_t *inode) {
 /* Returns block pointer `blkidx` from block of `blkaddr` address. */
 static uint32_t ext2_blkptr_read(uint32_t blkaddr, uint32_t blkidx) {
 #ifdef STUDENT
-  /* TODO */
+
   blk_t *block = blk_get(0, blkaddr);
   uint32_t blockPtr = ((uint32_t *)block->b_data)[blkidx];
   blk_put(block);
@@ -297,7 +305,6 @@ long ext2_blkaddr_read(uint32_t ino, uint32_t blkidx) {
 
     /* Read direct pointers or pointers from indirect blocks. */
 #ifdef STUDENT
-
   uint32_t lvl0Size = EXT2_NDADDR;
   uint32_t lvl1Size = BLK_POINTERS;
   uint32_t lvl2Size = BLK_POINTERS * BLK_POINTERS;
@@ -342,7 +349,6 @@ long ext2_blkaddr_read(uint32_t ino, uint32_t blkidx) {
  * WARNING: This function assumes that `ino` i-node pointer is valid! */
 int ext2_read(uint32_t ino, void *data, size_t pos, size_t len) {
 #ifdef STUDENT
-
   ext2_inode_t inode;
   ext2_inode_read(ino, &inode);
   if (pos + len > inode.i_size)
@@ -409,8 +415,6 @@ int ext2_readlink(uint32_t ino, char *buf, size_t buflen) {
 
     /* Check if it's a symlink and read it. */
 #ifdef STUDENT
-  /* TODO */
-
   if ((EXT2_IFLNK & inode.i_mode) && buflen >= inode.i_size) {
     if (inode.i_size < EXT2_MAXSYMLINKLEN) {
       memcpy(buf, inode.i_blocks, inode.i_size);
@@ -455,7 +459,6 @@ int ext2_stat(uint32_t ino, struct stat *st) {
 
   st->st_blksize = BLKSIZE;
   st->st_blocks = inode.i_nblock;
-
 #endif /* !STUDENT */
   return ENOTSUP;
 }
@@ -477,7 +480,6 @@ int ext2_lookup(uint32_t ino, const char *name, uint32_t *ino_p,
     return error;
 
 #ifdef STUDENT
-
   if ((EXT2_IFDIR & inode.i_mode) == 0)
     return ENOTDIR;
 
@@ -540,7 +542,6 @@ int ext2_mount(const char *fspath) {
     /* Load interesting data from superblock into global variables.
      * Read group descriptor table into memory. */
 #ifdef STUDENT
-  /* TODO */
   inodes_per_group = sb.sb_ipg;
   blocks_per_group = sb.sb_bpg;
   group_desc_count = 1 + (sb.sb_bcount - 1) / blocks_per_group;
